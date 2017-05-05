@@ -30,13 +30,15 @@ CREATE TABLE Location(
 
 CREATE TABLE Services(
     Taxi_ID INT NOT NULL CHECK (Taxi_ID>0),
-    Tempo_ID INT NOT NULL CHECK (Tempo_ID>0),
+    TempoI_ID INT NOT NULL CHECK (TempoI_ID>0),
+    TempoF_ID INT NOT NULL CHECK (TempoF_ID>0),
     LocalI_ID INT NOT NULL CHECK (LocalI_ID>0),
     LocalF_ID INT NOT NULL CHECK (LocalF_ID>0),
     Nr_Viagens INT NOT NULL CHECK (Nr_Viagens>0),
     Tempo_Total INT NOT NULL CHECK (Tempo_Total>0),
     FOREIGN KEY(Taxi_ID) REFERENCES Taxi(Taxi_ID),
-    FOREIGN KEY(Tempo_ID) REFERENCES Tempo(Tempo_ID),
+    FOREIGN KEY(TempoI_ID) REFERENCES Tempo(TempoI_ID),
+    FOREIGN KEY(TempoF_ID) REFERENCES Tempo(TempoF_ID),
     FOREIGN KEY(LocalI_ID) REFERENCES Location(Local_ID),
     FOREIGN KEY(LocalF_ID) REFERENCES Location(Local_ID)
 );
