@@ -16,12 +16,18 @@ group by hora,dia,mes;
 #insert das combinacoes dia/hora/mes
 insert into tempo (hora, dia, mes)
 	select 
-	date_part('hour', timestamp) as Hora, 
-	date_part('day', timestamp) as Dia, 
-	date_part('month', timestamp) as Mes 
-from 
-	(select 
-		to_timestamp(taxi_services.initial_ts) as timestamp 
+		date_part('hour', timestamp) as Hora, 
+		date_part('day', timestamp) as Dia, 
+		date_part('month', timestamp) as Mes 
 	from 
-		taxi_services) as S 
+		(select 
+			to_timestamp(taxi_services.initial_ts) as timestamp 
+		from 
+			taxi_services) as S 
 group by hora,dia,mes;
+
+# insert das pracas de taxis
+insert into stand (stand_id, nome, lotacao) select id, name, 1 from taxi_stands;
+
+# insert dos taxis
+insert into taxi(taxi_id, num_licenca) select distinct(taxi_id), 1 from taxi_services;
