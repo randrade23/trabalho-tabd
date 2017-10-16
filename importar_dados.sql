@@ -1,20 +1,3 @@
--- calcular dia da semana dado ano/mes/dia - regra de Zeller
-CREATE OR REPLACE FUNCTION weekDay (year integer, month integer, day integer)
-RETURNS integer AS $dow$
-declare
-	dow integer;
-	adjustment integer;
-	mm integer;
-	yy integer;
-BEGIN
-   SELECT (14 - month) / 12 into adjustment;
-   SELECT month + 12 * adjustment - 2 into mm;
-   SELECT year - adjustment into yy;
-   SELECT (((day + (13 * mm - 1) / 5 + yy + yy / 4 - yy / 100 + yy / 400)-1) % 7) + 1 into dow;
-   RETURN dow;
-END;
-$dow$ LANGUAGE plpgsql;
-
 -- insert das combinacoes dia/hora/mes
 insert into tempo (hora, dia, mes)
 	select 
@@ -33,8 +16,6 @@ insert into stand (stand_id, nome, lotacao) select id, name, 1 from taxi_stands;
 
 -- insert dos taxis
 insert into taxi(taxi_id, num_licenca) select distinct(taxi_id), 1 from taxi_services;
-
-
     
 -- insert das locations ligadas com as stands
 
@@ -58,16 +39,6 @@ insert into location (stand_id, freguesia, concelho)
 		st_contains(caop.geom, location);
 
 -- insert das locations sem stands
-
-/*insert into location (stand_id, freguesia, concelho)
-	select 
-		null, 
-		freguesia, 
-		concelho 
-	from 
-		caop 
-	where 
-		distrito like '%PORTO%';*/
 
 insert into location (stand_id, freguesia, concelho)
 	select
@@ -104,6 +75,101 @@ insert into location (stand_id, freguesia, concelho)
 	where not exists (select null, freguesia, concelho from location)
 	group by freguesia, concelho;
 
-select location.local_id from location, taxi_stands, taxi_services, stand
-where st_distance(taxi_services.initial_point, taxi_stands.location) < 100
-and taxi_stands.id = stand.stand_id;
+-- preenchimento da tabela temporaria (expandida)
+
+insert into Temp (ID, Taxi_ID, localI_ID, freguesiaI, concelhoI, TempoI_ID, Initial_TS, HoraI, DiaI, MesI, localF_ID, freguesiaF, concelhoF, TempoF_ID, Final_TS, HoraF, DiaF, MesF)
+select ID1, Taxi_ID, localI_ID, freguesiaI, concelhoI, TempoI_ID, Initial_TS, HoraI, DiaI, MesI, localF_ID, freguesiaF, concelhoF, TempoF_ID, Final_TS, HoraF, DiaF, MesF
+
+FROM(
+    (((((select ID as ID1, initial_ts, date_part('hour', to_timestamp(taxi_services.initial_ts) ) as HoraI, date_part('day', to_timestamp(taxi_services.initial_ts) ) as DiaI, date_part('month', to_timestamp(taxi_services.initial_ts)) as MesI, tempo.tempo_ID AS tempoI_ID 
+     from taxi_services, tempo
+        where tempo.hora=date_part('hour', to_timestamp(taxi_services.initial_ts) ) AND tempo.dia=date_part('day', to_timestamp(taxi_services.initial_ts) ) AND tempo.mes=date_part('month', to_timestamp(taxi_services.initial_ts))) AS TIMEI
+
+    
+    INNER JOIN
+
+    
+    (select ID as ID2, final_ts, date_part('hour', to_timestamp(taxi_services.final_ts) ) as HoraF, date_part('day', to_timestamp(taxi_services.final_ts) ) as DiaF, date_part('month', to_timestamp(taxi_services.final_ts)) as MesF, tempo.tempo_ID AS tempoF_ID 
+     from taxi_services, tempo
+        where tempo.hora=date_part('hour', to_timestamp(taxi_services.final_ts) ) AND tempo.dia=date_part('day', to_timestamp(taxi_services.final_ts) ) AND tempo.mes=date_part('month', to_timestamp(taxi_services.final_ts))) AS TIMEF ON  ID1=ID2) 
+
+    
+    INNER JOIN
+
+
+    (select ID as ID3, taxi_id from taxi_services) AS TAXID ON ID1=ID3)
+
+    
+    INNER JOIN
+    
+
+    (select distinct localI_ID, ID4, freguesiaI, concelhoI
+     FROM
+        ((select distinct location.local_id as localI_ID, taxi_services.id as ID4, caop.freguesia as freguesiaI, caop.concelho as concelhoI
+        FROM taxi_services, taxi_stands, caop, Location
+          WHERE st_contains(caop.geom, taxi_services.initial_point) 
+            AND st_distancesphere(taxi_services.initial_point,taxi_stands.location)<=100
+            AND Location.Stand_ID=taxi_stands.ID
+            AND location.freguesia=caop.freguesia
+            AND location.concelho=caop.concelho)
+
+        UNION ALL
+     
+        (select distinct location.local_id as localI_ID, taxi_services.id as ID4, caop.freguesia as freguesiaI, caop.concelho as concelhoI
+        FROM taxi_services, taxi_stands, caop, Location
+         WHERE st_contains(caop.geom, taxi_services.initial_point) 
+            AND st_distancesphere(taxi_services.initial_point,taxi_stands.location)>100
+            AND Location.Stand_ID IS null
+            AND Location.freguesia=caop.freguesia
+            AND Location.concelho=caop.concelho)
+     
+        ) AS STANDS) AS LOCALI ON ID1= ID4)
+
+    
+    INNER JOIN
+    
+    
+    (select distinct ID5, localF_ID, freguesiaF, concelhoF
+     FROM
+        ((select distinct location.local_id as localF_ID, taxi_services.id as ID5, caop.freguesia as freguesiaF, caop.concelho as concelhoF
+        FROM taxi_services, taxi_stands, caop, Location
+        WHERE st_contains(caop.geom, taxi_services.final_point) 
+            AND st_distancesphere(taxi_services.final_point,taxi_stands.location)<=100
+            AND Location.Stand_ID=taxi_stands.ID
+            AND location.freguesia=caop.freguesia
+            AND location.concelho=caop.concelho)
+
+        UNION ALL
+
+        (select distinct location.local_id as localF_ID, taxi_services.id as ID5, caop.freguesia as freguesiaF, caop.concelho as concelhoF
+        FROM taxi_services, taxi_stands, caop, Location
+        WHERE st_contains(caop.geom, taxi_services.final_point) 
+            AND st_distancesphere(taxi_services.final_point,taxi_stands.location)>100
+            AND Location.Stand_ID IS null
+            AND Location.freguesia=caop.freguesia
+            AND Location.concelho=caop.concelho)
+     
+        ) AS STANDS) AS LOCALF ON ID1=ID5)
+) AS SUPER
+;
+
+-- limpar serviços com tempo < 180 segs (3 min)
+delete from temp where EXTRACT(EPOCH FROM(to_timestamp(final_ts) - to_timestamp(initial_ts)))<180;
+
+-- limpar serviços com tempo > 8h
+delete from temp where id in
+(select id from temp 
+ where EXTRACT(EPOCH FROM(to_timestamp(final_ts) - to_timestamp(initial_ts)))>28800);
+
+-- limpar serviços começados fora do Porto
+delete from temp where concelhoI not like '%PORTO%';
+
+-- preenchimento da tabela services (tabela de factos)
+
+insert into services (taxi_id, tempoi_id, locali_id, localf_id, nr_viagens, tempo_total) 
+	select taxi_id, tempoi_id, locali_id, localf_id, count(*) as nr_viagens, sum(EXTRACT(EPOCH FROM(to_timestamp(final_ts) - to_timestamp(initial_ts)))) as tempo_total 
+	from 
+		(select distinct on(id) taxi_id, tempoi_id, locali_id, localf_id, final_ts, initial_ts 
+		from 
+		temp) as S 
+	group by 1,2,3,4;
